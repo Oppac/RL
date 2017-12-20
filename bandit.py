@@ -1,7 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import spline
-
 
 class NArmedBandit:
     def __init__(self, arms_values):
