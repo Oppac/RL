@@ -1,23 +1,21 @@
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 
 class Agent:
-    def __init__(self, bandit, time_dep=False):
-        self.nb_arms = bandit[0]
-        self.nb_steps = bandit[1]
+    def __init__(self, arms, time_dep=False):
+        self.nb_arms = arms
         self.reset()
         self.time_dep = time_dep
 
     def reset(self):
         self.time = 1
-        self.all_rewards = np.zeros(self.nb_steps)
         self.hist_reward_arms = [[], [], [], []]
         self.q_estimates = np.zeros(self.nb_arms)
-        self.hist_estimates = []
 
 class AgentEpsilon(Agent):
-    def __init__(self, bandit, epsilon=0.2, time_dep=False):
-        Agent.__init__(self, bandit, time_dep)
+    def __init__(self, arms, epsilon=0.2, time_dep=False):
+        Agent.__init__(self, arms, time_dep)
         self.epsilon = epsilon
 
     def select_action(self):
@@ -31,8 +29,8 @@ class AgentEpsilon(Agent):
             return np.argmax(self.q_estimates)
 
 class AgentSoftmax(Agent):
-    def __init__(self, bandit, temperature=1, time_dep=False):
-        Agent.__init__(self, bandit, time_dep)
+    def __init__(self, arms, temperature=1, time_dep=False):
+        Agent.__init__(self, arms, time_dep)
         self.temperature = temperature
 
     def select_action(self):
@@ -45,32 +43,28 @@ class AgentSoftmax(Agent):
         return np.random.choice(len(self.q_estimates), 1, p=softmax)[0]
 
 
-def plot_reward(names, agent_list, time):
-    for n, agent in enumerate(agent_list):
-        cum_score = np.cumsum(agent.all_rewards)
-        avg_score = [cum_score[i] / i for i in range(1, len(agent.all_rewards))]
-        plt.plot(list(range(time-1)), avg_score, label=names[n])
-    plt.legend(loc="upper right")
+def plot_reward(names, scores, time):
+    for i in range(len(scores)):
+        plt.plot(np.arange(time), scores[i], label=names[i])
+    plt.legend(loc="lower right")
     plt.title("Cumulative average reward over time")
     plt.xlabel("Time")
-    plt.ylabel("Average reward")
+    plt.ylabel("Reward")
     plt.show()
 
-def plot_estimates(names, agent_list, arm, qstar, time):
-    plt.plot(list(range(time)), [qstar for _ in range(time)], label='Q*')
-    for n, agent in enumerate(agent_list):
-        estimates = [i[arm] for i in agent.hist_estimates]
-        plt.plot(list(range(time)), estimates, label=names[n])
+def plot_estimates(names, estimates, arm, qstar, time):
+    plt.plot(np.arange(time), np.full(time, qstar), label=f'Q*: {qstar}')
+    for i in range(len(estimates)):
+        plt.plot(np.arange(time), estimates[i], label=names[i])
     plt.legend(loc="best")
     plt.xlabel("Time")
     plt.ylabel("Estimated value")
-    plt.title("Estimates over time")
+    plt.title(f"Estimates over time for arm {arm}")
     plt.show()
 
-def plot_actions(name, agent, nb_arms):
-    nb_actions = [len(i) for i in agent.hist_reward_arms]
-    plt.bar(list(range(nb_arms)), nb_actions)
-    plt.xticks(list(range(nb_arms)))
+def plot_actions(name, agent_actions, nb_arms):
+    plt.bar(np.arange(nb_arms), agent_actions, label=name)
+    plt.xticks(np.arange(nb_arms))
     plt.xlabel("Actions")
     plt.ylabel("Number of time selected")
     plt.title(f"Selected action of agent {name}")
@@ -78,42 +72,59 @@ def plot_actions(name, agent, nb_arms):
 
 
 def main():
+    trials = 30
     time_steps = 1000
     bandit_qstar = np.array([[2.3, .9], [2.1, .6], [1.5, .4], [1.3, 2]])
 
-    bandit_info = [len(bandit_qstar), time_steps]
-    agent_list = [AgentEpsilon(bandit_info, 1),
-                  AgentEpsilon(bandit_info, 0),
-                  AgentEpsilon(bandit_info, 0.1),
-                  AgentEpsilon(bandit_info, 0.2),
-                  AgentSoftmax(bandit_info, 1),
-                  AgentSoftmax(bandit_info, 0.1),
-                  AgentEpsilon(bandit_info, time_dep=True),
-                  AgentSoftmax(bandit_info, time_dep=True)
+    agent_list = [AgentEpsilon(len(bandit_qstar), 1),
+                  AgentEpsilon(len(bandit_qstar), 0),
+                  AgentEpsilon(len(bandit_qstar), 0.1),
+                  AgentEpsilon(len(bandit_qstar), 0.2),
+                  AgentSoftmax(len(bandit_qstar), 1),
+                  AgentSoftmax(len(bandit_qstar), 0.1),
+                  AgentEpsilon(len(bandit_qstar), time_dep=True),
+                  AgentSoftmax(len(bandit_qstar), time_dep=True)
                  ]
 
-    for agent in agent_list:
-        for t in range(time_steps):
-            agent_action = agent.select_action()
-            reward = np.random.normal(bandit_qstar[agent_action][0],
-                                      bandit_qstar[agent_action][1])
+    all_scores = np.zeros((len(agent_list), time_steps))
+    all_estimates = [np.zeros((len(agent_list), time_steps))
+                     for _ in range(len(bandit_qstar))]
+    all_actions = np.zeros((len(agent_list), len(bandit_qstar)))
 
-            agent.all_rewards[t] = reward
-            agent.hist_reward_arms[agent_action].append(reward)
-            agent.hist_estimates.append(agent.q_estimates.copy())
-            agent.q_estimates[agent_action] = (
-                            sum(agent.hist_reward_arms[agent_action]) /
-                            len(agent.hist_reward_arms[agent_action])
-                            )
+    for _ in range(trials):
+        for i, agent in enumerate(agent_list):
+            for t in range(time_steps):
+                agent_action = agent.select_action()
+                all_actions[i][agent_action] += 1
+                reward = np.random.normal(bandit_qstar[agent_action][0],
+                                          bandit_qstar[agent_action][1])
 
+                all_scores[i][t] += reward
+                agent.hist_reward_arms[agent_action].append(reward)
+                agent.q_estimates[agent_action] = (
+                                sum(agent.hist_reward_arms[agent_action]) /
+                                len(agent.hist_reward_arms[agent_action])
+                                )
+                for k in range(len(bandit_qstar)):
+                    all_estimates[k][i][t] += agent.q_estimates[k]
+            agent.reset()
 
     names = ['Random', 'Epsilon:0', 'Epsilon:0.1',
              'Epsilon:0.2', 'Softmax:1', 'Softmax:0.1',
              'EpsilonTime', 'SoftmaxTime']
 
-    plot_reward(names, agent_list, time_steps)
-    plot_estimates(names, agent_list, 0, 2.3, time_steps)
-    plot_actions(names[-1], agent_list[-1], 4)
+    all_scores = np.divide(np.divide(np.cumsum(all_scores, axis=1), trials),
+                           np.arange(1, time_steps+1))
+    plot_reward(names, all_scores, time_steps)
 
+    all_estimates = np.divide(all_estimates, trials)
+    for i in range(len(bandit_qstar)):
+        plot_estimates(names, all_estimates[i], i, bandit_qstar[i][0], time_steps)
 
+    all_actions = np.divide(all_actions, trials)
+    for i in range(len(agent_list)):
+        plot_actions(names[i], all_actions[i], len(bandit_qstar))
+
+#start_time = time.time()
 main()
+#print(f"--- %{time.time() - start_time} seconds ---")
